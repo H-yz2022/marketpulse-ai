@@ -1,0 +1,14 @@
+# Core runtime dependencies. Install with: pip install -r requirements.txt
+requests>=2.31
+pandas>=2.0
+yfinance>=0.2.40
+streamlit>=1.35
+plotly>=5.20
+chromadb>=0.5
+anthropic>=0.34
+python-dotenv>=1.0
+
+# Optional: real FinBERT sentiment instead of the lexicon fallback.
+# Heavy (pulls in torch) so it's kept out of the default install.
+# transformers>=4.40
+# torch>=2.2

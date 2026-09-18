@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marketpulse-ai"
+version = "0.1.0"
+description = "An LLM/NLP research assistant for market data and SEC filings"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.0",
+    "yfinance>=0.2.40",
+    "streamlit>=1.35",
+    "plotly>=5.20",
+    "chromadb>=0.5",
+    "anthropic>=0.34",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Real FinBERT sentiment (heavy: pulls in torch). Without this installed,
+# marketpulse.nlp.sentiment automatically falls back to a lexicon scorer.
+nlp = ["transformers>=4.40", "torch>=2.2"]
+dev = ["pytest>=8.0", "pytest-mock>=3.14", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
