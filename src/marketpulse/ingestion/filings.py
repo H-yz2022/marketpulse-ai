@@ -77,7 +77,6 @@ def ingest_filings_for_ticker(
         filing_id = hit.get("_id", "")
         accession_no = source.get("adsh", "").replace("-", "")
         cik_no_pad = source.get("cik", "")
-        doc_names = source.get("ciks", [])
         url = (
             f"https://www.sec.gov/Archives/edgar/data/{cik_no_pad}/{accession_no}/"
             if accession_no and cik_no_pad
