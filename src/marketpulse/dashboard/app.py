@@ -15,18 +15,53 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from marketpulse.config import settings
-from marketpulse.db import fetch_filings, fetch_price_history, fetch_sentiment_scores
-from marketpulse.rag.pipeline import answer_question
+from marketpulse.db import fetch_filings, fetch_price_history, fetch_sentiment_scores, init_db
+from marketpulse.ingestion.filings import ingest_filings_for_ticker
+from marketpulse.ingestion.market_data import ingest_price_history
+from marketpulse.nlp.sentiment import score_and_store
+from marketpulse.rag.pipeline import answer_question, index_document
 
 st.set_page_config(page_title="MarketPulse AI", layout="wide")
 st.title("MarketPulse AI — Market & Filing Research Assistant")
 
 tickers = list(settings.default_tickers) or ["AAPL"]
 ticker = st.sidebar.selectbox("Ticker", options=tickers)
-st.sidebar.caption(
-    "No data for this ticker yet? Run `python scripts/run_pipeline.py --ticker "
-    f"{ticker}` first."
-)
+
+
+def _fetch_live_data(ticker: str) -> int:
+    """Run the same ingestion steps as scripts/run_pipeline.py, from inside
+    the running app. This lets a freshly deployed dashboard (empty database,
+    e.g. on Streamlit Community Cloud) populate itself with one click,
+    instead of requiring shell access to run the CLI script."""
+    init_db()
+    ingest_price_history(ticker)
+    ingest_filings_for_ticker(ticker)
+    n_indexed = 0
+    for filing in fetch_filings(ticker):
+        text = filing["excerpt"] or filing["title"] or ""
+        if not text:
+            continue
+        score_and_store(ticker, text, source_type="filing", source_id=filing["filing_id"])
+        index_document(
+            filing["filing_id"], text, metadata={"ticker": ticker, "form_type": filing["form_type"] or ""}
+        )
+        n_indexed += 1
+    return n_indexed
+
+
+with st.sidebar:
+    st.caption(
+        "No data for this ticker yet? Fetch live price history and SEC filings below "
+        "(takes ~10-20s; longer on the very first click while dependencies warm up)."
+    )
+    if st.button(f"Fetch/refresh live data for {ticker}"):
+        with st.spinner(f"Fetching price history and SEC filings for {ticker}..."):
+            try:
+                n_indexed = _fetch_live_data(ticker)
+                st.success(f"Indexed {n_indexed} filing(s) for {ticker}.")
+                st.rerun()
+            except Exception as e:  # noqa: BLE001 - surface any ingestion failure in the UI, don't crash the app
+                st.error(f"Couldn't fetch live data for {ticker}: {e}")
 
 price_rows = fetch_price_history(ticker)
 sentiment_rows = fetch_sentiment_scores(ticker)
