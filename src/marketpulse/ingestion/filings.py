@@ -50,7 +50,7 @@ def get_cik_for_ticker(ticker: str) -> Optional[str]:
 
 def search_filings(
     query: str,
-    forms: str = "10-K,10-Q",
+    forms: str = "10-K",
     ciks: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,

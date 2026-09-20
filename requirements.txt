@@ -7,6 +7,8 @@ plotly>=5.20
 chromadb>=0.5
 anthropic>=0.34
 python-dotenv>=1.0
+beautifulsoup4>=4.12
+lxml>=5.0
 
 # Optional: real FinBERT sentiment instead of the lexicon fallback.
 # Heavy (pulls in torch) so it's kept out of the default install.
