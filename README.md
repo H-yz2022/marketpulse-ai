@@ -104,6 +104,12 @@ The app is containerized (`Dockerfile`) so any of the three major clouds work; p
 - Deploy the Streamlit app publicly (Streamlit Community Cloud) and link a live demo here.
 - Add authentication and multi-user support if this ever needs to be shared beyond a personal demo.
 
+## Live demo
+
+**[Live dashboard →]([<your-streamlit-app-url>](https://marketpulse-ai-yunzhu.streamlit.app/))** (hosted free on Streamlit Community Cloud, deployed straight from this repo)
+
+The deployed instance starts with an empty database — click **"Fetch/refresh live data"** in the sidebar for a ticker to pull real price history and SEC filings on the spot (takes ~10-20s), then try the Q&A box. Data doesn't persist across a cold start (the app can idle after inactivity and reset), which is expected: the fetch button rebuilds everything live rather than relying on a stale snapshot.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
