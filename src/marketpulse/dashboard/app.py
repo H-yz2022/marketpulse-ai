@@ -15,11 +15,18 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from marketpulse.config import settings
-from marketpulse.db import fetch_filings, fetch_price_history, fetch_sentiment_scores, init_db
+from marketpulse.db import (
+    delete_filings_for_ticker,
+    delete_sentiment_scores_for_ticker,
+    fetch_filings,
+    fetch_price_history,
+    fetch_sentiment_scores,
+    init_db,
+)
 from marketpulse.ingestion.filings import ingest_filings_for_ticker
 from marketpulse.ingestion.market_data import ingest_price_history
 from marketpulse.nlp.sentiment import score_and_store
-from marketpulse.rag.pipeline import answer_question, index_document
+from marketpulse.rag.pipeline import answer_question, delete_ticker_documents, index_document
 
 st.set_page_config(page_title="MarketPulse AI", layout="wide")
 st.title("MarketPulse AI — Market & Filing Research Assistant")
@@ -32,8 +39,22 @@ def _fetch_live_data(ticker: str) -> int:
     """Run the same ingestion steps as scripts/run_pipeline.py, from inside
     the running app. This lets a freshly deployed dashboard (empty database,
     e.g. on Streamlit Community Cloud) populate itself with one click,
-    instead of requiring shell access to run the CLI script."""
+    instead of requiring shell access to run the CLI script.
+
+    This is a *refresh*, not an append: this ticker's existing filings,
+    sentiment rows, and indexed chunks are cleared first. Every ingestion
+    write elsewhere in this app is an upsert-by-ID, which never removes a
+    filing that stops being re-fetched (an older 10-K displaced by a newer
+    one) or a sentiment row re-scored on a later run - those would otherwise
+    accumulate forever and dilute retrieval/analysis with stale data. Wiping
+    this ticker's data before rebuilding it is what makes clicking the
+    button repeatedly safe, with no manual "reboot the app" step required.
+    """
     init_db()
+    delete_filings_for_ticker(ticker)
+    delete_sentiment_scores_for_ticker(ticker, source_type="filing")
+    delete_ticker_documents(ticker)
+
     ingest_price_history(ticker)
     ingest_filings_for_ticker(ticker)
     n_indexed = 0
@@ -43,7 +64,7 @@ def _fetch_live_data(ticker: str) -> int:
             continue
         score_and_store(ticker, text, source_type="filing", source_id=filing["filing_id"])
         index_document(
-            filing["filing_id"], text, metadata={"ticker": ticker, "form_type": filing["form_type"] or ""}
+            filing["filing_id"], text, metadata={"ticker": ticker.upper(), "form_type": filing["form_type"] or ""}
         )
         n_indexed += 1
     return n_indexed

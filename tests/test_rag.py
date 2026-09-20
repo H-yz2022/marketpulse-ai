@@ -33,6 +33,14 @@ class _FakeCollection:
             "distances": [[0.1] * len(items)],
         }
 
+    def delete(self, where=None):
+        if not where:
+            self.docs.clear()
+            return
+        self.docs = {
+            i: (d, m) for i, (d, m) in self.docs.items() if not all(m.get(k) == v for k, v in where.items())
+        }
+
 
 def test_index_and_retrieve(monkeypatch):
     fake = _FakeCollection()
@@ -67,3 +75,23 @@ def test_answer_question_no_matches(monkeypatch):
 
     result = pipeline.answer_question("anything")
     assert "No indexed filings" in result["answer"]
+
+
+def test_delete_ticker_documents_only_removes_matching_ticker(monkeypatch):
+    fake = _FakeCollection()
+    monkeypatch.setattr(pipeline, "_get_collection", lambda: fake)
+
+    pipeline.index_document("aapl-2016", "old, stale risk text", {"ticker": "AAPL"})
+    pipeline.index_document("aapl-2026", "current risk text", {"ticker": "AAPL"})
+    pipeline.index_document("msft-2026", "a different company's text", {"ticker": "MSFT"})
+
+    pipeline.delete_ticker_documents("aapl")
+
+    remaining_tickers = {m["ticker"] for _d, m in fake.docs.values()}
+    assert remaining_tickers == {"MSFT"}
+
+
+def test_reset_client_clears_cached_client(monkeypatch):
+    monkeypatch.setattr(pipeline, "_CLIENT", object())  # simulate an already-connected client
+    pipeline.reset_client()
+    assert pipeline._CLIENT is None

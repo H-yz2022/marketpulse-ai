@@ -143,3 +143,43 @@ def fetch_filings(ticker: str, db_path: Optional[str] = None) -> list[sqlite3.Ro
             "SELECT * FROM filings WHERE ticker = ? ORDER BY filed_date DESC", (ticker.upper(),)
         )
         return cur.fetchall()
+
+
+def delete_filings_for_ticker(ticker: str, db_path: Optional[str] = None) -> int:
+    """Delete every filings row for a ticker. Returns the number of rows removed.
+
+    Used to make re-ingestion a true *refresh* rather than an accumulation:
+    without this, re-running the pipeline for a ticker only ever adds/updates
+    filings by ID, so a filing that drops out of the current search results
+    (e.g. an older 10-K, once a newer one takes its place) is never removed
+    and just lingers in the database forever.
+    """
+    init_db(db_path)
+    with connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM filings WHERE ticker = ?", (ticker.upper(),))
+        return cur.rowcount
+
+
+def delete_sentiment_scores_for_ticker(
+    ticker: str, source_type: Optional[str] = None, db_path: Optional[str] = None
+) -> int:
+    """Delete sentiment_scores rows for a ticker (optionally scoped to one
+    source_type, e.g. "filing"). Returns the number of rows removed.
+
+    `insert_sentiment_score` always inserts a new row rather than replacing
+    one for the same document - by design, so a ticker's sentiment can be
+    tracked *over time* - but that means re-scoring the same filings on every
+    pipeline run just piles up duplicate rows for the same day. Callers that
+    want a clean re-score (like the dashboard's refresh button) should call
+    this first.
+    """
+    init_db(db_path)
+    with connect(db_path) as conn:
+        if source_type:
+            cur = conn.execute(
+                "DELETE FROM sentiment_scores WHERE ticker = ? AND source_type = ?",
+                (ticker.upper(), source_type),
+            )
+        else:
+            cur = conn.execute("DELETE FROM sentiment_scores WHERE ticker = ?", (ticker.upper(),))
+        return cur.rowcount

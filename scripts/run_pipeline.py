@@ -12,15 +12,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from marketpulse.db import fetch_filings, init_db  # noqa: E402
+from marketpulse.db import (  # noqa: E402
+    delete_filings_for_ticker,
+    delete_sentiment_scores_for_ticker,
+    fetch_filings,
+    init_db,
+)
 from marketpulse.ingestion.filings import ingest_filings_for_ticker  # noqa: E402
 from marketpulse.ingestion.market_data import ingest_price_history  # noqa: E402
 from marketpulse.nlp.sentiment import score_and_store  # noqa: E402
-from marketpulse.rag.pipeline import index_document  # noqa: E402
+from marketpulse.rag.pipeline import delete_ticker_documents, index_document  # noqa: E402
 
 
 def run(ticker: str, period: str = "6mo") -> None:
     init_db()
+
+    # Refresh, not append: clear this ticker's existing filings, sentiment
+    # rows, and indexed chunks first. Every ingestion write below is an
+    # upsert-by-ID, which never removes a filing that stops being re-fetched
+    # or a sentiment row re-scored on a later run - those would otherwise
+    # accumulate across repeated runs and dilute retrieval with stale data.
+    print(f"[0/3] Clearing existing data for {ticker}...")
+    delete_filings_for_ticker(ticker)
+    delete_sentiment_scores_for_ticker(ticker, source_type="filing")
+    delete_ticker_documents(ticker)
 
     print(f"[1/3] Fetching price history for {ticker}...")
     n_prices = ingest_price_history(ticker, period=period)
@@ -41,7 +56,7 @@ def run(ticker: str, period: str = "6mo") -> None:
         index_document(
             filing["filing_id"],
             text,
-            metadata={"ticker": ticker, "form_type": filing["form_type"] or ""},
+            metadata={"ticker": ticker.upper(), "form_type": filing["form_type"] or ""},
         )
         print(f"      {filing['filing_id']}: {result.label} ({result.method})")
 

@@ -53,8 +53,45 @@ def index_document(doc_id: str, text: str, metadata: dict) -> int:
     return len(chunks)
 
 
-def retrieve(query: str, n_results: int = 4, where: Optional[dict] = None) -> list[dict]:
-    """Retrieve the most relevant indexed chunks for a natural-language query."""
+def delete_ticker_documents(ticker: str) -> None:
+    """Remove every indexed chunk for a ticker from the vector store.
+
+    `index_document` only ever upserts by chunk ID, so a filing that stops
+    being re-fetched (an older 10-K displaced by a newer one, or a filing
+    indexed under an earlier, wider search before ingestion was narrowed to
+    the most recent filings only) is never cleaned up on its own - it just
+    keeps winning retrieval alongside, or instead of, the current data.
+    Callers that want a clean re-index (like the dashboard's refresh button)
+    should call this before re-ingesting.
+    """
+    collection = _get_collection()
+    collection.delete(where={"ticker": ticker.upper()})
+
+
+def reset_client() -> None:
+    """Drop the cached Chroma client so the next call reconnects from scratch.
+
+    Needed after deleting the persisted Chroma directory out from under a
+    long-running process (e.g. scripts/reset_data.py deleting data/chroma/
+    while the Streamlit dashboard is still running in the same session) -
+    without this, the already-initialized client would keep pointing at
+    on-disk files that no longer exist.
+    """
+    global _CLIENT
+    _CLIENT = None
+
+
+def retrieve(query: str, n_results: int = 8, where: Optional[dict] = None) -> list[dict]:
+    """Retrieve the most relevant indexed chunks for a natural-language query.
+
+    Defaults to 8, not 4: SEC filings open their risk-factors section with
+    near-identical boilerplate ("This discussion of risk factors contains
+    forward-looking statements..."), so the first couple of chunks from any
+    indexed 10-K tend to score well against almost any question in this
+    domain. A small n_results can fill up entirely with that intro text
+    before reaching the specific risks further into the document; asking for
+    more chunks gives the LLM a real chance to see past the intro.
+    """
     collection = _get_collection()
     results = collection.query(query_texts=[query], n_results=n_results, where=where)
     hits = []
@@ -93,7 +130,7 @@ def _default_generate_answer(question: str, context_chunks: list[str]) -> str:
 
 def answer_question(
     question: str,
-    n_results: int = 4,
+    n_results: int = 8,
     where: Optional[dict] = None,
     generate_fn: Optional[Callable[[str, list[str]], str]] = None,
 ) -> dict:
