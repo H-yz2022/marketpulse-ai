@@ -1,0 +1,34 @@
+# Streamlit settings for the dashboard (picked up by `streamlit run` from the
+# repo root, including on Streamlit Community Cloud).
+
+[client]
+# Hide the developer menu (rerun/settings/deploy) from public visitors.
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#1D4ED8"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F6FB"
+textColor = "#0F172A"
+linkColor = "#1D4ED8"
+borderColor = "#E2E8F0"
+showWidgetBorder = true
+baseRadius = "8px"
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+
+# Gains/losses and status colors (st.metric deltas, badges, alerts).
+greenColor = "#059669"
+redColor = "#DC2626"
+blueColor = "#1D4ED8"
+grayColor = "#64748B"
+
+chartCategoricalColors = ["#1D4ED8", "#059669", "#DC2626", "#7C3AED", "#D97706", "#0891B2", "#64748B"]
+
+dataframeHeaderBackgroundColor = "#F3F6FB"
+
+[theme.sidebar]
+backgroundColor = "#F3F6FB"
+secondaryBackgroundColor = "#FFFFFF"

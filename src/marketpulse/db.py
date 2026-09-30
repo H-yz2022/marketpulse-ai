@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
@@ -45,7 +46,22 @@ CREATE TABLE IF NOT EXISTS sentiment_scores (
     score REAL NOT NULL,
     text_snippet TEXT
 );
+
+-- One row per answered Q&A question, used only to enforce the shared daily
+-- cap on calls to the billed Anthropic API (see Settings.max_daily_questions
+-- in config.py). asked_date is a UTC "YYYY-MM-DD" string, not a timestamp,
+-- so counting "today's" rows is a simple equality match rather than a range
+-- query, and the cap resets naturally at UTC midnight.
+CREATE TABLE IF NOT EXISTS qa_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asked_date TEXT NOT NULL,
+    ticker TEXT
+);
 """
+
+
+def _today_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
@@ -183,3 +199,57 @@ def delete_sentiment_scores_for_ticker(
         else:
             cur = conn.execute("DELETE FROM sentiment_scores WHERE ticker = ?", (ticker.upper(),))
         return cur.rowcount
+
+def fetch_filing_sentiment(ticker: str, db_path: Optional[str] = None) -> list[sqlite3.Row]:
+    """Sentiment scores for a ticker's filings, dated by when each filing was
+    *filed* rather than when it was scored.
+
+    `scored_date` is just the day the pipeline ran, so every filing ingested
+    in one run shares it and a chart over it collapses to a single point.
+    Joining back to `filings` puts each score on its 10-K's filing date,
+    which is what turns it into an actual year-over-year trend.
+    """
+    init_db(db_path)
+    with connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT f.filing_id, f.filed_date, f.form_type, f.url, s.label, s.score
+            FROM sentiment_scores AS s
+            JOIN filings AS f ON f.filing_id = s.source_id
+            WHERE s.ticker = ? AND s.source_type = 'filing'
+            ORDER BY f.filed_date
+            """,
+            (ticker.upper(),),
+        )
+        return cur.fetchall()
+
+
+def tickers_with_prices(db_path: Optional[str] = None) -> set[str]:
+    """Tickers that already have any price history stored."""
+    init_db(db_path)
+    with connect(db_path) as conn:
+        return {row[0] for row in conn.execute("SELECT DISTINCT ticker FROM price_history")}
+
+
+def log_qa_usage(ticker: Optional[str] = None, db_path: Optional[str] = None) -> None:
+    """Record one answered Q&A question against today's (UTC) usage count.
+
+    Call this once per successful `answer_question()` call - i.e. once per
+    real hit to the billed Anthropic API - so `count_qa_usage_today` can
+    enforce the shared daily cap across every visitor to the dashboard.
+    """
+    init_db(db_path)
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO qa_usage (asked_date, ticker) VALUES (?, ?)",
+            (_today_utc(), ticker.upper() if ticker else None),
+        )
+
+
+def count_qa_usage_today(db_path: Optional[str] = None) -> int:
+    """How many questions have been answered so far today (UTC), across all
+    visitors and tickers combined."""
+    init_db(db_path)
+    with connect(db_path) as conn:
+        cur = conn.execute("SELECT COUNT(*) FROM qa_usage WHERE asked_date = ?", (_today_utc(),))
+        return cur.fetchone()[0]

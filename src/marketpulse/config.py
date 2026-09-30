@@ -40,6 +40,27 @@ class Settings:
     default_tickers: tuple = field(
         default_factory=lambda: _parse_tickers(os.getenv("MARKETPULSE_TICKERS", "AAPL,MSFT,JPM"))
     )
+    # A committed JSON snapshot of real price/filing/sentiment data (built by
+    # scripts/build_snapshot.py). The dashboard loads it into an empty
+    # database on startup, so a freshly deployed or just-woken-up instance -
+    # whose SQLite file is wiped on every restart - shows real charts
+    # immediately instead of a page of "No data yet" boxes.
+    snapshot_path: str = field(
+        default_factory=lambda: os.getenv("MARKETPULSE_SNAPSHOT_PATH", str(BASE_DIR / "demo_data" / "snapshot.json"))
+    )
+    # Only the "Ask a question" button calls the billed Anthropic API - every
+    # other feature (price history, filing ingestion, sentiment scoring) is
+    # free/local. These two caps exist so a public deployment (e.g. on
+    # Streamlit Community Cloud, where anyone with the link can click Ask)
+    # can't run up an unbounded API bill if a lot of people - or a script -
+    # hit the button many times. Defaults are deliberately generous for a
+    # single demo visitor but low enough to bound worst-case spend.
+    max_session_questions: int = field(
+        default_factory=lambda: int(os.getenv("MARKETPULSE_MAX_SESSION_QUESTIONS", "5"))
+    )
+    max_daily_questions: int = field(
+        default_factory=lambda: int(os.getenv("MARKETPULSE_MAX_DAILY_QUESTIONS", "30"))
+    )
 
 
 settings = Settings()

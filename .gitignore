@@ -11,6 +11,7 @@ env/
 
 # Environment / secrets
 .env
+.streamlit/secrets.toml
 
 # Data (generated locally; don't commit a scraped SQLite DB or vector index)
 data/*.db

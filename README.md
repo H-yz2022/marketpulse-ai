@@ -6,11 +6,11 @@ Built as a portfolio project for AI/Data Science internship applications — it'
 
 ## What it does
 
-1. **Ingests** stock price history (`yfinance`) and SEC filing excerpts (EDGAR full-text search API) for a ticker.
+1. **Ingests** stock price history (`yfinance`) and the "Item 1A. Risk Factors" section of each of a company's five most recent 10-Ks (SEC EDGAR) for a ticker.
 2. **Scores sentiment** on filing/news text with FinBERT (a finance-specific NLP model), falling back to a lightweight keyword scorer when `transformers`/`torch` aren't installed.
 3. **Indexes** filing text into a local vector store (ChromaDB) and answers natural-language questions about it using the Claude API, with source citations — a small retrieval-augmented generation (RAG) pipeline.
 4. **Stores** everything in SQLite (swappable for Postgres) for structured querying.
-5. **Visualizes** price history, sentiment trends, and filings in a Streamlit dashboard with an embedded Q&A chat box.
+5. **Visualizes** price history, filing-by-filing tone, and filings in a Streamlit dashboard with an embedded Q&A box, scoped to the selected company and rate-limited to keep API costs bounded.
 
 ## Architecture
 
@@ -44,12 +44,22 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements.txt
 cp .env.example .env   # then fill in ANTHROPIC_API_KEY and SEC_USER_AGENT
 
-python scripts/init_db.py
-python scripts/run_pipeline.py --ticker AAPL
 streamlit run src/marketpulse/dashboard/app.py
 ```
 
+The dashboard works immediately: on startup it loads a bundled snapshot of real data (`demo_data/snapshot.json`) for any ticker the database doesn't have yet. To pull live data instead, use **Refresh** in the sidebar, or the CLI:
+
+```bash
+python scripts/run_pipeline.py --ticker AAPL
+```
+
 Without an `ANTHROPIC_API_KEY`, everything works except the Q&A answer generation step (retrieval and indexing still run; the dashboard shows a clear error for that one feature until a key is added).
+
+To make the bundled demo data more current, rebuild the snapshot and commit it. It builds in a throwaway database, so your local data is never touched:
+
+```bash
+python scripts/build_snapshot.py
+```
 
 ### Running tests
 
@@ -66,6 +76,8 @@ All tests are offline and mock external calls (yfinance, SEC EDGAR, ChromaDB, th
 src/marketpulse/
   config.py           # env-driven settings, sensible defaults
   db.py                # SQLite schema + CRUD (swap db_path for Postgres later)
+  refresh.py           # ingest -> score -> index for one ticker (shared by CLI, dashboard, snapshot builder)
+  snapshot.py          # export/load the bundled demo snapshot
   ingestion/
     market_data.py     # yfinance price history
     filings.py          # SEC EDGAR full-text search + CIK lookup
@@ -78,7 +90,11 @@ src/marketpulse/
 scripts/
   init_db.py
   run_pipeline.py        # end-to-end CLI: ingest -> score -> index
-tests/                   # offline unit tests for every module above
+  build_snapshot.py      # rebuild demo_data/snapshot.json from live data
+  reset_data.py          # delete the local SQLite DB + Chroma index
+demo_data/snapshot.json  # real data the dashboard loads on a cold start
+.streamlit/config.toml   # dashboard theme
+tests/                   # offline unit tests for every module above, plus a headless dashboard smoke test
 .github/workflows/ci.yml # lint + test on every push/PR
 ```
 
@@ -101,14 +117,22 @@ The app is containerized (`Dockerfile`) so any of the three major clouds work; p
 
 - Swap SQLite for a hosted Postgres instance (Supabase/RDS free tier).
 - Add portfolio-level aggregation across a watchlist instead of one ticker at a time.
-- Deploy the Streamlit app publicly (Streamlit Community Cloud) and link a live demo here.
+- Install the optional FinBERT extra in the deployed app; the lexicon fallback is a blunt instrument on risk-factor prose.
 - Add authentication and multi-user support if this ever needs to be shared beyond a personal demo.
 
 ## Live demo
 
 **[Live dashboard →](https://marketpulse-ai-yunzhu.streamlit.app/)** (hosted free on Streamlit Community Cloud, deployed straight from this repo)
 
-The deployed instance starts with an empty database — click **"Fetch/refresh live data"** in the sidebar for a ticker to pull real price history and SEC filings on the spot (takes ~10-20s), then try the Q&A box. Data doesn't persist across a cold start (the app can idle after inactivity and reset), which is expected: the fetch button rebuilds everything live rather than relying on a stale snapshot.
+Streamlit Community Cloud puts idle apps to sleep, and the first visitor after that sees a "wake up" screen for a minute or so while the container restarts. A restart also wipes the app's SQLite database. To make sure there is always something to see, the app loads `demo_data/snapshot.json` (real prices and 10-K data, captured by `scripts/build_snapshot.py`) into the empty database on startup. The page is populated immediately, with a banner showing the snapshot's date. **Refresh** in the sidebar pulls live data for a ticker.
+
+### Cost and abuse guardrails
+
+Only the Q&A box calls the paid Anthropic API; charts, ingestion, and sentiment are free. A public link means anyone (or any bot) can click it, so:
+
+- **Q&A is capped** at 5 questions per visitor session and 30 per day across all visitors. The caps are checked *before* any API call, and both can be changed via `MARKETPULSE_MAX_SESSION_QUESTIONS` / `MARKETPULSE_MAX_DAILY_QUESTIONS`.
+- **Live refresh has a 10-minute cooldown per ticker**, shared by all visitors, so nobody can hammer SEC EDGAR under this app's User-Agent.
+- **Set a spend limit in the Anthropic Console** (Settings → Workspaces → your workspace → Spend limits) as the hard backstop. The in-app daily counter lives in the same SQLite file and resets whenever the app restarts.
 
 ## License
 

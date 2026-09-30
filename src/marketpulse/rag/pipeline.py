@@ -68,6 +68,18 @@ def delete_ticker_documents(ticker: str) -> None:
     collection.delete(where={"ticker": ticker.upper()})
 
 
+def has_ticker_documents(ticker: str) -> bool:
+    """Whether any chunks for this ticker are in the vector store yet.
+
+    The dashboard seeds SQLite from a bundled snapshot on a cold start but
+    leaves the Chroma index empty (embedding every chunk up front would slow
+    the first page load for visitors who never ask a question), so it calls
+    this to index a ticker's filings lazily, right before its first question.
+    """
+    collection = _get_collection()
+    return bool(collection.get(where={"ticker": ticker.upper()}, limit=1)["ids"])
+
+
 def reset_client() -> None:
     """Drop the cached Chroma client so the next call reconnects from scratch.
 

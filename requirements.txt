@@ -2,7 +2,7 @@
 requests>=2.31
 pandas>=2.0
 yfinance>=0.2.40
-streamlit>=1.35
+streamlit>=1.64
 plotly>=5.20
 chromadb>=0.5
 anthropic>=0.34

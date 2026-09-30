@@ -33,6 +33,10 @@ class _FakeCollection:
             "distances": [[0.1] * len(items)],
         }
 
+    def get(self, where=None, limit=None):
+        ids = [i for i, (_d, m) in self.docs.items() if not where or all(m.get(k) == v for k, v in where.items())]
+        return {"ids": ids[:limit] if limit else ids}
+
     def delete(self, where=None):
         if not where:
             self.docs.clear()
@@ -95,3 +99,13 @@ def test_reset_client_clears_cached_client(monkeypatch):
     monkeypatch.setattr(pipeline, "_CLIENT", object())  # simulate an already-connected client
     pipeline.reset_client()
     assert pipeline._CLIENT is None
+
+
+def test_has_ticker_documents(monkeypatch):
+    fake = _FakeCollection()
+    monkeypatch.setattr(pipeline, "_get_collection", lambda: fake)
+
+    assert not pipeline.has_ticker_documents("AAPL")
+    pipeline.index_document("aapl-2026", "risk text", {"ticker": "AAPL"})
+    assert pipeline.has_ticker_documents("aapl")
+    assert not pipeline.has_ticker_documents("MSFT")
